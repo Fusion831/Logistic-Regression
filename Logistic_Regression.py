@@ -169,55 +169,114 @@ class LogisticRegression:
             self.cost_history.append(cost_iteration)
         return theta
     
-    def predict(self, X_b):
-        """Predicting the class labels using the learned model parameters.
-        Args:
-            X_b (np.ndarray): Input features with bias term.
-        Returns:
-            np.ndarray: Predicted class labels (0 or 1).
-        """
-        if self.theta is None:
-            raise ValueError("Model has not been trained yet.")
-        
-        probabilities = self.sigmoid(X_b @ self.theta)
-        return (probabilities >= 0.5).astype(int) #return 0 or 1 based on threshold of 0.5
-    
-    def fit(self, X_b, y, solver="batch_gd", learning_rate=0.01, n_iterations=1000,
+    def fit(self, X, y, solver="batch_gd", learning_rate=0.01, n_iterations=1000,
             n_epochs=50, batch_size=32, theta_initial=None):
         """
-        Fits the Logistic regression model using the specified solver.
+        Fits the Logistic regression model to the training data.
+
+        This method preprocesses the input features by adding a bias term,
+        initializes model parameters if not provided, and then calls the
+        specified gradient descent solver to optimize the parameters.
 
         Args:
-            X_b (np.ndarray): Design matrix (features + intercept column, x0=1).
-            y (np.ndarray): Target values.
-            solver (str): The optimization algorithm.
-                          Options:  "batch_gd", "sgd", "mini_batch_gd".
-            learning_rate (float): Learning rate for Gradient Descent variants.
-            n_iterations (int): Number of iterations (for BGD, Mini-Batch GD if not using epochs).
-            n_epochs (int): Number of epochs (for SGD, or can be used for Mini-Batch GD).
-            batch_size (int): Batch size for Mini-Batch GD.
-            theta_initial (np.ndarray, optional): Initial guess for parameters [bias, weight1,...].
-                                                  If None, initialized to zeros.
+            X (np.ndarray): Input features (training data).
+                            Shape (m_samples, n_features).
+            y (np.ndarray): Target labels (training data).
+                            Shape (m_samples,) or (m_samples, 1).
+            solver (str, optional): The optimization algorithm to use.
+                                    Options: "batch_gd", "sgd", "mini_batch_gd".
+                                    Defaults to "batch_gd".
+            learning_rate (float, optional): Learning rate for gradient descent.
+                                             Defaults to 0.01.
+            n_iterations (int, optional): Number of iterations for Batch GD and
+                                          Mini-Batch GD (if not epoch-based).
+                                          Defaults to 1000.
+            n_epochs (int, optional): Number of full passes over the dataset (epochs).
+                                      Used by SGD and can be used by Mini-Batch GD.
+                                      Defaults to 50.
+            batch_size (int, optional): Size of mini-batches for Mini-Batch GD.
+                                        Defaults to 32.
+            theta_initial (np.ndarray, optional): Initial guess for model parameters (theta),
+                                                  including the bias term. Shape (n_features + 1, 1).
+                                                  If None, parameters are initialized to zeros.
+                                                  Defaults to None.
 
         Raises:
-            ValueError: If an unsupported solver is specified.
+            ValueError: If an unsupported solver is specified or if theta_initial
+                        has an incompatible shape.
         """
-        if theta_initial is None:
-            # Initialize theta with zeros. X_b.shape[1] is num_features + 1 (for intercept).
-            self.theta = np.zeros((X_b.shape[1], 1))
-        else:
-            self.theta = np.copy(theta_initial)
+        self.solver_used_for_last_fit = solver
+        self.cost_history = []  
 
+        # Add bias term to X
+        X_b = np.c_[np.ones((X.shape[0], 1)), X]
+
+        # Initialize theta if not provided, or use provided theta_initial
+        if theta_initial is None:
+            initial_theta_for_gd = np.zeros((X_b.shape[1], 1))
+        else:
+            if theta_initial.shape[0] != X_b.shape[1] or theta_initial.ndim != 2 or theta_initial.shape[1] != 1 :
+                raise ValueError(
+                    f"Shape of theta_initial {theta_initial.shape} must be ({X_b.shape[1]}, 1) "
+                    f"to be compatible with X_b columns {X_b.shape[1]}"
+                )
+            initial_theta_for_gd = np.copy(theta_initial)
+
+        # Ensure y is a column vector
+        if y.ndim == 1:
+            y = y.reshape(-1, 1)
+        
         m_samples = len(y) # Total number of training examples
 
+        final_theta = None 
+
+        
         if solver == "batch_gd":
-            self.theta = self.Batch_gradient_Descent(X_b, y, self.theta, learning_rate, n_iterations)
+            final_theta = self.Batch_gradient_Descent(X_b, y, initial_theta_for_gd, learning_rate, n_iterations)
         elif solver == "sgd":
-            self.theta = self.stochastic_gradient_descent(X_b, y, self.theta, learning_rate, n_epochs, m_samples)
+            final_theta = self.stochastic_gradient_descent(X_b, y, initial_theta_for_gd, learning_rate, n_epochs, m_samples)
         elif solver == "mini_batch_gd":
-            self.theta = self.mini_batch_gradient_descent(X_b, y, self.theta, learning_rate, n_iterations, batch_size, m_samples)
+            final_theta = self.mini_batch_gradient_descent(X_b, y, initial_theta_for_gd, learning_rate, n_iterations, batch_size, m_samples)
         else:
             raise ValueError(f"Unsupported solver: {solver}. Choose from 'batch_gd', 'sgd', 'mini_batch_gd'.")
+        
+        self.theta = final_theta 
+
+    def predict(self, X, threshold=0.5):
+        """
+        Predicts class labels for input samples.
+
+        This method first adds a bias term to the input features, then
+        calculates the probabilities using the sigmoid function and the
+        learned model parameters (theta). Finally, it applies a threshold
+        to these probabilities to assign class labels (0 or 1).
+
+        Args:
+            X (np.ndarray): Input features for which to make predictions.
+                            Shape (m_samples, n_features).
+            threshold (float, optional): The threshold used to convert probabilities
+                                         to class labels. If probability >= threshold,
+                                         class 1 is predicted, otherwise class 0.
+                                         Defaults to 0.5.
+
+        Returns:
+            np.ndarray: Predicted class labels (0 or 1) for each input sample.
+                        Shape (m_samples, 1).
+
+        Raises:
+            ValueError: If the model has not been trained yet (i.e., theta is None).
+        """
+        if self.theta is None:
+            raise ValueError("Model has not been trained yet. Call fit() first.")
+        
+        # Add bias term to X for prediction
+        X_b = np.c_[np.ones((X.shape[0], 1)), X]
+        
+        # Calculate probabilities
+        probabilities = self.sigmoid(X_b @ self.theta)
+        
+        # Apply threshold to get class labels
+        return (probabilities >= threshold).astype(int)
     
     
     def plot_cost_history(self):
@@ -233,29 +292,6 @@ class LogisticRegression:
         plt.show()
     
     
-    def visualize(self, X_b, y):
-        """Visualizing the Decision Boundary.
-        This function plots the decision boundary of the logistic regression model.
-        Args:
-            X_b (np.ndarray): Input features with bias term.
-            y (np.ndarray): Target labels.
-        """
-        if self.theta is None:
-            raise ValueError("Model has not been trained yet.")
-        
-        plt.figure(figsize=(10, 6))
-        plt.scatter(X_b[:, 1], X_b[:, 2], c=y.flatten(), cmap='viridis', edgecolors='k', s=50)
-        
-        # Plotting decision boundary
-        x_values = np.linspace(X_b[:, 1].min(), X_b[:, 1].max(), 100)
-        y_values = -(self.theta[0] + self.theta[1] * x_values) / self.theta[2]
-        
-        plt.plot(x_values, y_values, color='red', linewidth=2)
-        plt.xlabel('Feature 1')
-        plt.ylabel('Feature 2')
-        plt.title('Logistic Regression Decision Boundary')
-        plt.grid()
-        plt.show()
     
     
     
