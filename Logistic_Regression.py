@@ -5,14 +5,22 @@ class LogisticRegression:
     """Logistic Regression Implementation from Scratch.
     
     """
-    def __init__(self):
+    def __init__(self, lambda_val=0.0):
         """
+        
+            
         Intialize the Logistic Regression model.
         theta is a column vector containing the model parameters.
         Cost history is used to track the cost during training during each iteration/epoch.
+        
+        args:
+            lambda_val (float): Regularization parameter. Default is 0.0 (no regularization).
+            
         """
         self.theta = None
         self.cost_history = []
+        self.lambda_val = lambda_val
+        
     
     def sigmoid(self, z):
         """Computing the Sigmoid Function.
@@ -37,6 +45,12 @@ class LogisticRegression:
             return 0.0
         h = self.sigmoid(X_b @ theta)
         cost= -1/m * (y.T @ np.log(h + 1e-7) + (1 - y).T @ np.log(1 - h + 1e-7)) #to prevent log(0)
+        if self.lambda_val > 0:
+            
+            reg_term = (self.lambda_val / (2 * m)) * np.sum(np.square(theta[1:]))
+            
+            cost = cost + reg_term
+        
         return cost[0,0] #to have a scalar value
     
     def _gradient(self,X_b,y,theta):
@@ -53,6 +67,10 @@ class LogisticRegression:
             return np.zeros_like(theta)
         h =self.sigmoid(X_b @ theta)
         gradient = 1/m*(X_b.T@(h-y))
+        if self.lambda_val > 0:
+            reg_term = (self.lambda_val / m) * theta
+            reg_term[0] = 0
+            gradient = gradient + reg_term
         return gradient
     
     def Batch_gradient_Descent(self,X_b,y,theta_initial,learning_rate=0.01,epochs=1000):
@@ -200,5 +218,104 @@ class LogisticRegression:
             self.theta = self.mini_batch_gradient_descent(X_b, y, self.theta, learning_rate, n_iterations, batch_size, m_samples)
         else:
             raise ValueError(f"Unsupported solver: {solver}. Choose from 'batch_gd', 'sgd', 'mini_batch_gd'.")
+    
+    
+    def plot_cost_history(self):
+        """Plotting the Cost History during Training.
+        This function plots the cost history to visualize the convergence of the model.
+        """
+        plt.plot(range(len(self.cost_history)), self.cost_history)
+        plt.xlabel('Iterations/Epochs')
+        plt.ylabel('Cost')
+        plt.title('Cost History')
+        plt.tight_layout()
+        plt.grid()
+        plt.show()
+    
+    
+    def visualize(self, X_b, y):
+        """Visualizing the Decision Boundary.
+        This function plots the decision boundary of the logistic regression model.
+        Args:
+            X_b (np.ndarray): Input features with bias term.
+            y (np.ndarray): Target labels.
+        """
+        if self.theta is None:
+            raise ValueError("Model has not been trained yet.")
+        
+        plt.figure(figsize=(10, 6))
+        plt.scatter(X_b[:, 1], X_b[:, 2], c=y.flatten(), cmap='viridis', edgecolors='k', s=50)
+        
+        # Plotting decision boundary
+        x_values = np.linspace(X_b[:, 1].min(), X_b[:, 1].max(), 100)
+        y_values = -(self.theta[0] + self.theta[1] * x_values) / self.theta[2]
+        
+        plt.plot(x_values, y_values, color='red', linewidth=2)
+        plt.xlabel('Feature 1')
+        plt.ylabel('Feature 2')
+        plt.title('Logistic Regression Decision Boundary')
+        plt.grid()
+        plt.show()
+    
+    
+    
+    def plot_decision_boundary(self, X, y, title="Decision Boundary"):
+        """
+        Plots the decision boundary for a 2D dataset.
+        Assumes the model has been trained and X has 2 features.
+
+        Args:
+            X (np.ndarray): Feature matrix (m samples, 2 features).
+                            This should be the same data (or scaled the same way)
+                            that the model was trained on, but WITHOUT the bias column.
+            y (np.ndarray): True labels (m samples,). Used for coloring data points.
+            title (str): Title for the plot.
+        """
+        if self.theta is None:
+            print("Model has not been trained yet. Call fit() first.")
+            return
+        if X.shape[1] != 2:
+            print("Decision boundary plotting is only supported for 2D feature data.")
+            return
+
+        
+        if y.ndim > 1:
+            y = y.ravel()
+
+        
+        plt.figure(figsize=(8, 6))
+        plt.scatter(X[:, 0], X[:, 1], c=y, edgecolors='k', s=50)
+
+
+        x1_min, x1_max = X[:, 0].min() - 0.5, X[:, 0].max() + 0.5
+        x1_plot = np.linspace(x1_min, x1_max, 100) 
+
+       
+        theta0 = self.theta[0, 0]
+        theta1 = self.theta[1, 0]
+        theta2 = self.theta[2, 0]
+
+        
+        
+        if theta2 != 0: 
+            x2_plot = (-theta0 - theta1 * x1_plot) / theta2
+            plt.plot(x1_plot, x2_plot, label='Decision Boundary', color='green', linewidth=2)
+        elif theta1 != 0: 
+            
+            y_min, y_max = X[:, 1].min() - 0.5, X[:, 1].max() + 0.5
+            plt.axvline(x=(-theta0 / theta1), color='green', linestyle='--', linewidth=2, label='Decision Boundary (Vertical)')
+            plt.ylim(y_min, y_max)
+        else: 
+            print("Warning: Decision boundary might be ill-defined (theta1 and theta2 are zero or near zero).")
+            
+
+
+        plt.xlabel("Feature 1")
+        plt.ylabel("Feature 2")
+        plt.title(title)
+        plt.legend()
+        plt.grid(True)
+        plt.tight_layout()
+        plt.show()
     
         
